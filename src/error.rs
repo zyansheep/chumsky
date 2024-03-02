@@ -231,7 +231,7 @@ where
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "found ")?;
-        write_token(f, T::fmt, self.found.as_deref())?;
+        write_token(f, &mut T::fmt, self.found.as_deref())?;
         write!(f, " at {:?}", self.span)?;
         Ok(())
     }
@@ -290,8 +290,8 @@ impl<'a, T, L> RichPattern<'a, T, L> {
     fn write(
         &self,
         f: &mut fmt::Formatter,
-        mut fmt_token: impl FnMut(&T, &mut fmt::Formatter<'_>) -> fmt::Result,
-        mut fmt_label: impl FnMut(&L, &mut fmt::Formatter<'_>) -> fmt::Result,
+        fmt_token: &mut impl FnMut(&T, &mut fmt::Formatter<'_>) -> fmt::Result,
+        fmt_label: &mut impl FnMut(&L, &mut fmt::Formatter<'_>) -> fmt::Result,
     ) -> fmt::Result {
         match self {
             Self::Token(tok) => {
@@ -422,15 +422,15 @@ impl<'a, T, L> RichReason<'a, T, L> {
     fn inner_fmt<S>(
         &self,
         f: &mut fmt::Formatter<'_>,
-        mut fmt_token: impl FnMut(&T, &mut fmt::Formatter<'_>) -> fmt::Result,
-        mut fmt_span: impl FnMut(&S, &mut fmt::Formatter<'_>) -> fmt::Result,
-        mut fmt_label: impl FnMut(&L, &mut fmt::Formatter<'_>) -> fmt::Result,
+        fmt_token: &mut impl FnMut(&T, &mut fmt::Formatter<'_>) -> fmt::Result,
+        fmt_span: &mut impl FnMut(&S, &mut fmt::Formatter<'_>) -> fmt::Result,
+        fmt_label: &mut impl FnMut(&L, &mut fmt::Formatter<'_>) -> fmt::Result,
         span: Option<&S>,
     ) -> fmt::Result {
         match self {
             RichReason::ExpectedFound { expected, found } => {
                 write!(f, "found ")?;
-                write_token(f, &mut fmt_token, found.as_deref())?;
+                write_token(f, fmt_token, found.as_deref())?;
                 if let Some(span) = span {
                     write!(f, " at ")?;
                     fmt_span(span, f)?;
@@ -438,17 +438,17 @@ impl<'a, T, L> RichReason<'a, T, L> {
                 write!(f, " expected ")?;
                 match &expected[..] {
                     [] => write!(f, "something else")?,
-                    [expected] => expected.write(f, &mut fmt_token, &mut fmt_label)?,
+                    [expected] => expected.write(f, fmt_token, fmt_label)?,
                     _ => {
                         for expected in &expected[..expected.len() - 1] {
-                            expected.write(f, &mut fmt_token, &mut fmt_label)?;
+                            expected.write(f, fmt_token, fmt_label)?;
                             write!(f, ", ")?;
                         }
                         write!(f, "or ")?;
                         expected
                             .last()
                             .unwrap()
-                            .write(f, &mut fmt_token, &mut fmt_label)?;
+                            .write(f, fmt_token, fmt_label)?;
                     }
                 }
             }
@@ -459,10 +459,13 @@ impl<'a, T, L> RichReason<'a, T, L> {
                     fmt_span(span, f)?;
                 }
             }
-            RichReason::Many(_) => {
-                write!(f, "multiple errors")?;
+            RichReason::Many(errs) => {
+                write!(f, "multiple errors: [")?;
+                for err in errs {
+                    err.inner_fmt(f, fmt_token, fmt_span, fmt_label, span)?;
+                }
                 if let Some(span) = span {
-                    write!(f, " found at ")?;
+                    write!(f, "] found at ")?;
                     fmt_span(span, f)?;
                 }
             }
@@ -526,7 +529,7 @@ where
     L: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.inner_fmt(f, T::fmt, |_: &(), _| Ok(()), L::fmt, None)
+        self.inner_fmt(f, &mut T::fmt, &mut |_: &(), _| Ok(()), &mut L::fmt, None)
     }
 }
 
@@ -546,9 +549,9 @@ impl<'a, T, S, L> Rich<'a, T, S, L> {
     fn inner_fmt(
         &self,
         f: &mut fmt::Formatter<'_>,
-        fmt_token: impl FnMut(&T, &mut fmt::Formatter<'_>) -> fmt::Result,
-        fmt_span: impl FnMut(&S, &mut fmt::Formatter<'_>) -> fmt::Result,
-        fmt_label: impl FnMut(&L, &mut fmt::Formatter<'_>) -> fmt::Result,
+        fmt_token: &mut impl FnMut(&T, &mut fmt::Formatter<'_>) -> fmt::Result,
+        fmt_span: &mut impl FnMut(&S, &mut fmt::Formatter<'_>) -> fmt::Result,
+        fmt_label: &mut impl FnMut(&L, &mut fmt::Formatter<'_>) -> fmt::Result,
         with_spans: bool,
     ) -> fmt::Result {
         self.reason.inner_fmt(
@@ -809,7 +812,7 @@ where
     L: fmt::Debug,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.inner_fmt(f, T::fmt, S::fmt, L::fmt, true)
+        self.inner_fmt(f, &mut T::fmt, &mut S::fmt, &mut L::fmt, true)
     }
 }
 
@@ -820,13 +823,13 @@ where
     L: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.inner_fmt(f, T::fmt, S::fmt, L::fmt, false)
+        self.inner_fmt(f, &mut T::fmt, &mut S::fmt, &mut L::fmt, false)
     }
 }
 
 fn write_token<T>(
     f: &mut fmt::Formatter,
-    mut fmt_token: impl FnMut(&T, &mut fmt::Formatter<'_>) -> fmt::Result,
+    fmt_token: &mut impl FnMut(&T, &mut fmt::Formatter<'_>) -> fmt::Result,
     tok: Option<&T>,
 ) -> fmt::Result {
     match tok {
