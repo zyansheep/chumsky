@@ -464,7 +464,7 @@ impl<'a, T, L> RichReason<'a, T, L> {
             RichReason::Many(errs) => {
                 write!(f, "multiple errors: [")?;
                 for err in errs {
-                    err.inner_fmt(f, fmt_token, fmt_span, fmt_label, span, context)?;
+                    err.inner_fmt(f, fmt_token, fmt_span, fmt_label, span, #[cfg(feature = "label")] context)?;
                 }
                 if let Some(span) = span {
                     write!(f, "] found at ")?;
