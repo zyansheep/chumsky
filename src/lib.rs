@@ -892,6 +892,9 @@ pub trait Parser<'a, I: Input<'a>, O, E: ParserExtra<'a, I> = extra::Default>:
     ///
     /// The output type of this parser is `(O, U)`, a combination of the outputs of both parsers.
     ///
+    /// If you instead only need the output of __one__ of the parsers, use [`ignore_then`](Self::ignore_then)
+    /// or [`then_ignore`](Self::then_ignore).
+    ///
     /// # Examples
     ///
     /// ```
@@ -920,6 +923,9 @@ pub trait Parser<'a, I: Input<'a>, O, E: ParserExtra<'a, I> = extra::Default>:
     /// Parse one thing and then another thing, yielding only the output of the latter.
     ///
     /// The output type of this parser is `U`, the same as the second parser.
+    ///
+    /// If you instead only need the output of the first parser, use [`then_ignore`](Self::then_ignore).
+    /// If you need the output of __both__ parsers, use [`then`](Self::then).
     ///
     /// # Examples
     ///
@@ -951,6 +957,9 @@ pub trait Parser<'a, I: Input<'a>, O, E: ParserExtra<'a, I> = extra::Default>:
     /// Parse one thing and then another thing, yielding only the output of the former.
     ///
     /// The output type of this parser is `O`, the same as the original parser.
+    ///
+    /// If you instead only need the output of the second parser, use [`ignore_then`](Self::ignore_then).
+    /// If you need the output of __both__ parsers, use [`then`](Self::then).
     ///
     /// # Examples
     ///
@@ -3508,5 +3517,46 @@ mod tests {
         {
             todo().map_with(|expr, e| (expr, e.span()))
         }
+    }
+
+    #[cfg(feature = "label")]
+    #[test]
+    fn label() {
+        use crate::label::LabelError;
+
+        fn parser<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> {
+            just("hello").labelled("greeting").as_context().ignored()
+        }
+
+        let mut err = <Rich<_> as crate::Error<&str>>::expected_found(
+            Some(Some('h'.into())),
+            Some('g'.into()),
+            (0..1).into(),
+        );
+        <Rich<_, _, _> as LabelError<&str, _>>::label_with(&mut err, "greeting");
+        assert_eq!(parser().parse("goodbye").into_errors(), vec![err]);
+
+        let mut err = <Rich<_> as crate::Error<&str>>::expected_found(
+            Some(Some('l'.into())),
+            Some('p'.into()),
+            (3..4).into(),
+        );
+        <Rich<_, _, _> as LabelError<&str, _>>::in_context(&mut err, "greeting", (0..3).into());
+        assert_eq!(parser().parse("help").into_errors(), vec![err]);
+
+        fn parser2<'src>() -> impl Parser<'src, &'src str, (), extra::Err<Rich<'src, char>>> {
+            text::keyword("hello")
+                .labelled("greeting")
+                .as_context()
+                .ignored()
+        }
+
+        let mut err = <Rich<_> as crate::Error<&str>>::expected_found(
+            Some(Some('h'.into())),
+            None,
+            (0..7).into(),
+        );
+        <Rich<_, _, _> as LabelError<&str, _>>::label_with(&mut err, "greeting");
+        assert_eq!(parser2().parse("goodbye").into_errors(), vec![err]);
     }
 }

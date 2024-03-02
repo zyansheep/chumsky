@@ -7,6 +7,7 @@
 //! like [`Cheap`], [`Simple`] or [`Rich`].
 
 use super::*;
+#[cfg(not(feature = "std"))]
 use alloc::string::ToString;
 
 /// A trait that describes parser error types.
@@ -426,6 +427,7 @@ impl<'a, T, L> RichReason<'a, T, L> {
         fmt_span: &mut impl FnMut(&S, &mut fmt::Formatter<'_>) -> fmt::Result,
         fmt_label: &mut impl FnMut(&L, &mut fmt::Formatter<'_>) -> fmt::Result,
         span: Option<&S>,
+        #[cfg(feature = "label")] context: &[(L, S)],
     ) -> fmt::Result {
         match self {
             RichReason::ExpectedFound { expected, found } => {
@@ -469,6 +471,13 @@ impl<'a, T, L> RichReason<'a, T, L> {
                     fmt_span(span, f)?;
                 }
             }
+        }
+        #[cfg(feature = "label")]
+        for (l, s) in context {
+            write!(f, " in ")?;
+            fmt_label(l, f)?;
+            write!(f, " at ")?;
+            fmt_span(s, f)?;
         }
         Ok(())
     }
@@ -529,7 +538,15 @@ where
     L: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.inner_fmt(f, &mut T::fmt, &mut |_: &(), _| Ok(()), &mut L::fmt, None)
+        self.inner_fmt(
+            f,
+            &mut T::fmt,
+            &mut |_: &(), _| Ok(()),
+            &mut L::fmt,
+            None,
+            #[cfg(feature = "label")]
+            &[],
+        )
     }
 }
 
@@ -560,6 +577,8 @@ impl<'a, T, S, L> Rich<'a, T, S, L> {
             fmt_span,
             fmt_label,
             if with_spans { Some(&self.span) } else { None },
+            #[cfg(feature = "label")]
+            &self.context,
         )
     }
 }
